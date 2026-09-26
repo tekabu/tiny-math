@@ -1,0 +1,9 @@
+{
+  "name": "Tiny Math",
+  "short_name": "Tiny Math",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff8e7",
+  "theme_color": "#fff8e7",
+  "icons": [{ "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }]
+}
