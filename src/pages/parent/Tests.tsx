@@ -5,7 +5,7 @@ import { distinctQuestions, TYPE_LABEL } from '../../generate'
 
 type Draft = Omit<Test, 'id' | 'createdAt'> & { id?: number }
 
-const blank: Draft = { name: '', type: 'add', min: 0, max: 5, count: 10, active: true, showCounters: false, kidIds: [] }
+const blank: Draft = { name: '', type: 'add', min: 0, max: 5, count: 10, active: true, showCounters: false, allowEqual: false, kidIds: [] }
 
 export default function Tests() {
   const { data: tests, reload } = useApi<Test[]>('/tests')
@@ -96,9 +96,9 @@ export default function Tests() {
               <input className="input" type="number" min={1} max={100} value={Number.isNaN(draft.count) ? '' : draft.count} onChange={(e) => setDraft({ ...draft, count: num(e.target.value) })} />
             </div>
           </div>
-          {draft.min <= draft.max && draft.count > distinctQuestions(draft.type, draft.min, draft.max) && (
+          {draft.min <= draft.max && draft.count > distinctQuestions(draft.type, draft.min, draft.max, draft.allowEqual) && (
             <p className="font-bold text-amber-600">
-              Numbers {draft.min}–{draft.max} only make {distinctQuestions(draft.type, draft.min, draft.max)} different
+              Numbers {draft.min}–{draft.max} only make {distinctQuestions(draft.type, draft.min, draft.max, draft.allowEqual)} different
               questions, so some will repeat. Widen the range or ask fewer.
             </p>
           )}
@@ -133,6 +133,17 @@ export default function Tests() {
             />
             Show 🍎 apples to help count <span className="font-medium text-slate-500">(numbers up to 10)</span>
           </label>
+          {draft.type === 'place' && (
+            <label className="flex items-center gap-2 text-lg font-bold">
+              <input
+                type="checkbox"
+                className="size-5 accent-violet-600"
+                checked={draft.allowEqual}
+                onChange={(e) => setDraft({ ...draft, allowEqual: e.target.checked })}
+              />
+              Include = questions <span className="font-medium text-slate-500">(off: only &lt; and &gt;)</span>
+            </label>
+          )}
           <label className="flex items-center gap-2 text-lg font-bold">
             <input type="checkbox" className="size-5 accent-violet-600" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} />
             Active (kids can see it)
@@ -153,7 +164,7 @@ export default function Tests() {
             <div>
               <div className="text-xl font-extrabold">{t.name}</div>
               <div className="text-slate-500">
-                {TYPE_LABEL[t.type]} · numbers {t.min}–{t.max} · {t.count} questions ·{t.showCounters && ' 🍎 ·'}{' '}
+                {TYPE_LABEL[t.type]} · numbers {t.min}–{t.max} · {t.count} questions ·{t.type === 'place' && (t.allowEqual ? ' with = ·' : ' no = ·')}{t.showCounters && ' 🍎 ·'}{' '}
                 {t.kidIds.length === 0 ? 'all kids' : t.kidIds.map(kidName).join(', ')}
               </div>
             </div>

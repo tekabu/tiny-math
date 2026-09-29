@@ -18,6 +18,8 @@ export interface Test {
   active: boolean
   /** show apples under numbers (≤ 10) to help counting */
   showCounters: boolean
+  /** drag test only: some questions use = (off: only < and >) */
+  allowEqual: boolean
   /** empty array = assigned to every kid */
   kidIds: number[]
   createdAt: number

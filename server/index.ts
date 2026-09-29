@@ -46,6 +46,7 @@ const TABLES: Record<string, string> = {
     count INTEGER NOT NULL,
     active INTEGER NOT NULL,
     show_counters INTEGER NOT NULL DEFAULT 0,
+    allow_equal INTEGER NOT NULL DEFAULT 0,
     kid_ids TEXT NOT NULL,
     created_at INTEGER NOT NULL`,
   attempts: `
@@ -67,10 +68,17 @@ migrate()
 db.exec('PRAGMA foreign_keys = ON')
 for (const [name, cols] of Object.entries(TABLES)) db.exec(`CREATE TABLE IF NOT EXISTS ${name} (${cols})`)
 addAttemptType()
+addColumn('tests', 'allow_equal', 'INTEGER NOT NULL DEFAULT 0')
 db.exec(`
   CREATE INDEX IF NOT EXISTS attempts_kid ON attempts(kid_id);
   CREATE INDEX IF NOT EXISTS attempts_test ON attempts(test_id);
 `)
+
+/** Add a column that older databases were made without. */
+function addColumn(table: string, name: string, def: string) {
+  const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).map((c) => c.name)
+  if (!cols.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def}`)
+}
 
 /**
  * Attempts remember which kind of test made their questions. Older rows didn't, so work it
@@ -148,6 +156,7 @@ const toTest = (r: Row): Test => ({
   count: Number(r.count),
   active: Boolean(r.active),
   showCounters: Boolean(r.show_counters),
+  allowEqual: Boolean(r.allow_equal),
   kidIds: JSON.parse(String(r.kid_ids)),
   createdAt: Number(r.created_at),
 })
@@ -250,7 +259,9 @@ function readTestBody(body: Row) {
   const count = int(body.count, 'How many', 1, 100)
   const kidIds = Array.isArray(body.kidIds) ? body.kidIds.filter((k): k is number => Number.isInteger(k)) : []
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : ''
-  return { name, type, min, max, count, active: body.active !== false, showCounters: body.showCounters === true, kidIds }
+  const allowEqual = body.allowEqual === true
+  if (type === 'place' && !allowEqual && min === max) throw new HttpError(400, 'Need two different numbers, or allow =')
+  return { name, type, min, max, count, active: body.active !== false, showCounters: body.showCounters === true, allowEqual, kidIds }
 }
 
 // ---------- login throttle (per IP + username) ----------
@@ -400,7 +411,7 @@ const canTake = (t: Test, kidId: number) => t.active && (t.kidIds.length === 0 |
 const isPerfect = (a: Attempt) => a.finishedAt !== null && a.score === a.questions.length
 
 function newAttempt(test: Test, kidId: number) {
-  const questions = makeQuestions(test.type, test.min, test.max, test.count)
+  const questions = makeQuestions(test.type, test.min, test.max, test.count, test.allowEqual)
   const { lastInsertRowid } = db
     .prepare(
       'INSERT INTO attempts (test_id, kid_id, type, started_at, finished_at, questions, score) VALUES (?, ?, ?, ?, NULL, ?, 0)',
@@ -420,9 +431,9 @@ api.post('/tests', (req, res) => {
   const name = t.name || defaultName(t.type, t.min, t.max)
   const { lastInsertRowid } = db
     .prepare(
-      'INSERT INTO tests (name, type, min, max, count, active, show_counters, kid_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tests (name, type, min, max, count, active, show_counters, allow_equal, kid_ids, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     )
-    .run(name, t.type, t.min, t.max, t.count, t.active ? 1 : 0, t.showCounters ? 1 : 0, JSON.stringify(t.kidIds), Date.now())
+    .run(name, t.type, t.min, t.max, t.count, t.active ? 1 : 0, t.showCounters ? 1 : 0, t.allowEqual ? 1 : 0, JSON.stringify(t.kidIds), Date.now())
   res.json(getTest(Number(lastInsertRowid)))
 })
 
@@ -434,11 +445,11 @@ api.put('/tests/:id', (req, res) => {
   const t = readTestBody(req.body)
   // questions already made for the old settings no longer fit: unfinished tries start over
   // with the new ones (finished results are kept as they were taken)
-  if (t.type !== before.type || t.min !== before.min || t.max !== before.max || t.count !== before.count) {
+  if (t.type !== before.type || t.min !== before.min || t.max !== before.max || t.count !== before.count || t.allowEqual !== before.allowEqual) {
     db.prepare('DELETE FROM attempts WHERE test_id = ? AND finished_at IS NULL').run(id)
   }
   db.prepare(
-    'UPDATE tests SET name = ?, type = ?, min = ?, max = ?, count = ?, active = ?, show_counters = ?, kid_ids = ? WHERE id = ?',
+    'UPDATE tests SET name = ?, type = ?, min = ?, max = ?, count = ?, active = ?, show_counters = ?, allow_equal = ?, kid_ids = ? WHERE id = ?',
   ).run(
     t.name || defaultName(t.type, t.min, t.max),
     t.type,
@@ -447,6 +458,7 @@ api.put('/tests/:id', (req, res) => {
     t.count,
     t.active ? 1 : 0,
     t.showCounters ? 1 : 0,
+    t.allowEqual ? 1 : 0,
     JSON.stringify(t.kidIds),
     id,
   )

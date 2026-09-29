@@ -59,18 +59,22 @@ function build(type: TestType, a: number, b: number): Question {
   return { a, b, answer: String(answer), choices: numberChoices(answer) }
 }
 
-export function makeQuestion(type: TestType, min: number, max: number): Question {
+export function makeQuestion(type: TestType, min: number, max: number, allowEqual = true): Question {
   let a = rand(min, max)
   let b = rand(min, max)
+  if (type === 'place' && !allowEqual) {
+    while (a === b && min < max) b = rand(min, max)
+  }
   // plain random rarely lands on equal; give it a fair share
-  if ((type === 'compare' || type === 'place') && Math.random() < 1 / 3) b = a
+  else if ((type === 'compare' || type === 'place') && Math.random() < 1 / 3) b = a
   if (type === 'sub' && b > a) [a, b] = [b, a]
   return build(type, a, b)
 }
 
 /** How many different questions a range has (subtraction keeps a ≥ b). */
-export function distinctQuestions(type: TestType, min: number, max: number) {
+export function distinctQuestions(type: TestType, min: number, max: number, allowEqual = true) {
   const n = max - min + 1
+  if (type === 'place' && !allowEqual) return n * n - n
   return type === 'sub' ? (n * (n + 1)) / 2 : n * n
 }
 
@@ -78,14 +82,14 @@ export function distinctQuestions(type: TestType, min: number, max: number) {
  * A fresh random set for each kid's attempt with no question repeated inside it.
  * Only if the range is too small for the count do repeats happen (never back to back).
  */
-export function makeQuestions(type: TestType, min: number, max: number, count: number) {
+export function makeQuestions(type: TestType, min: number, max: number, count: number, allowEqual = true) {
   const seen = new Set<string>()
   const out: Question[] = []
   while (out.length < count) {
     const prev = out.at(-1)
-    let q = makeQuestion(type, min, max)
-    for (let tries = 0; tries < 1000 && seen.has(`${q.a},${q.b}`); tries++) q = makeQuestion(type, min, max)
-    for (let tries = 0; tries < 100 && prev && prev.a === q.a && prev.b === q.b; tries++) q = makeQuestion(type, min, max)
+    let q = makeQuestion(type, min, max, allowEqual)
+    for (let tries = 0; tries < 1000 && seen.has(`${q.a},${q.b}`); tries++) q = makeQuestion(type, min, max, allowEqual)
+    for (let tries = 0; tries < 100 && prev && prev.a === q.a && prev.b === q.b; tries++) q = makeQuestion(type, min, max, allowEqual)
     seen.add(`${q.a},${q.b}`)
     out.push(q)
   }
