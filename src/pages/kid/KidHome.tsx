@@ -50,7 +50,7 @@ export default function KidHome() {
               {open.map((test, i) => {
                 const last = latest(test)
                 const label = !last ? '▶ Start' : !last.finishedAt ? '▶ Keep going' : '🔁 Try again'
-                const symbol = test.type === 'compare' ? '< = >' : SYMBOL[test.type]
+                const symbol = test.type === 'compare' ? '< = >' : test.type === 'place' ? '▢ < ▢' : SYMBOL[test.type]
                 return (
                   <div key={test.id} className={`${COLORS[i % COLORS.length]} rounded-3xl p-5 text-white shadow-[0_6px_0_rgba(0,0,0,0.15)]`}>
                     <div className="text-6xl font-extrabold drop-shadow">{symbol}</div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Pinata from '../../components/Pinata'
 import { api, ApiError } from '../../api'
@@ -51,6 +51,138 @@ function Problem({ q, test, phase, type }: { q: Question; test: Test; phase: Pha
   )
 }
 
+/** tile index in each slot: [left, right] */
+type Slots = [number | null, number | null]
+
+interface Drag {
+  tile: number
+  from: 'tray' | 0 | 1
+  x: number
+  y: number
+  startX: number
+  startY: number
+  moved: boolean
+}
+
+/**
+ * Place: drag two number tiles into the boxes around the symbol.
+ * Tapping works too: a tray tile jumps to the first empty box, a boxed tile goes back.
+ */
+function PlaceBoard({ q, test, phase, slots, setSlots }: { q: Question; test: Test; phase: Phase; slots: Slots; setSlots: (s: Slots) => void }) {
+  const [drag, setDrag] = useState<Drag | null>(null)
+
+  useEffect(() => {
+    if (!drag) return
+    const d = drag
+    const move = (e: PointerEvent) => {
+      const moved = d.moved || Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 8
+      setDrag({ ...d, x: e.clientX, y: e.clientY, moved })
+    }
+    const up = (e: PointerEvent) => {
+      const next: Slots = [...slots]
+      if (d.from !== 'tray') next[d.from] = null
+      if (!d.moved) {
+        // tap: tray → first empty box, box → back to tray
+        if (d.from === 'tray') {
+          const empty = next.indexOf(null)
+          if (empty !== -1) next[empty] = d.tile
+        }
+      } else {
+        const target = (document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-slot]') as HTMLElement | null)?.dataset.slot
+        if (target !== undefined) {
+          const t = Number(target) as 0 | 1
+          // dragging box to box swaps; a tray tile bumps whatever was there back to the tray
+          if (d.from !== 'tray') next[d.from] = next[t]
+          next[t] = d.tile
+        } else if (d.from !== 'tray') {
+          next[d.from] = null
+        }
+      }
+      setSlots(next)
+      setDrag(null)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+    }
+  }, [drag, slots, setSlots])
+
+  const grab = (tile: number, from: Drag['from']) => (e: ReactPointerEvent) => {
+    if (phase !== 'ask' || drag) return
+    e.preventDefault()
+    setDrag({ tile, from, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: false })
+  }
+
+  const tileStyle = 'bg-white text-slate-800 ring-4 ring-violet-200 shadow-[0_6px_0_#c4b5fd]'
+  const inUse = (i: number) => slots.includes(i) || drag?.tile === i
+
+  // what each box shows: the kid's tiles, or after a miss the pair that fits
+  const shown = (s: 0 | 1) => {
+    if (phase === 'reveal') return String(s === 0 ? q.a : q.b)
+    const tile = slots[s]
+    if (tile === null || (drag?.moved && drag.tile === tile && drag.from === s)) return null
+    return q.choices[tile]
+  }
+  const boxStyle =
+    phase === 'wrong'
+      ? 'bg-red-500 text-white anim-wobble'
+      : phase === 'right' || phase === 'reveal'
+        ? 'bg-blue-600 text-white'
+        : ''
+
+  const box = (s: 0 | 1) => {
+    const v = shown(s)
+    return (
+      <span className="flex flex-col items-center">
+        <span
+          data-slot={s}
+          onPointerDown={slots[s] !== null ? grab(slots[s]!, s) : undefined}
+          className={`inline-grid h-[1.3em] min-w-[1.4em] touch-none place-items-center rounded-2xl px-2 transition ${
+            v === null ? 'border-4 border-dashed border-slate-300 bg-white text-slate-300' : boxStyle || tileStyle
+          } ${phase === 'ask' && v !== null ? 'cursor-grab' : ''}`}
+        >
+          {v ?? '?'}
+        </span>
+        {test.showCounters && v !== null && <Counters n={Number(v)} />}
+      </span>
+    )
+  }
+
+  return (
+    <>
+      <div className="flex items-start justify-center gap-3 text-7xl font-extrabold sm:gap-5 sm:text-8xl">
+        {box(0)} <span className="text-violet-600">{q.answer}</span> {box(1)}
+      </div>
+      <div className="grid w-full max-w-xl grid-cols-4 gap-4">
+        {q.choices.map((c, i) => (
+          <button
+            key={i}
+            onPointerDown={grab(i, 'tray')}
+            aria-disabled={phase !== 'ask'}
+            className={`touch-none rounded-3xl py-6 text-6xl font-extrabold transition sm:text-7xl ${
+              inUse(i) ? 'invisible' : phase === 'ask' ? `${tileStyle} cursor-grab` : 'bg-white text-slate-300 ring-4 ring-slate-100'
+            }`}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+      {drag?.moved && (
+        <div
+          className={`pointer-events-none fixed z-20 -translate-x-1/2 -translate-y-1/2 scale-110 rounded-3xl px-6 py-4 text-6xl font-extrabold sm:text-7xl ${tileStyle}`}
+          style={{ left: drag.x, top: drag.y }}
+        >
+          {q.choices[drag.tile]}
+        </div>
+      )}
+    </>
+  )
+}
+
 function ScoreScreen({ attempt, onAgain, onHome }: { attempt: Attempt; onAgain: () => void; onHome: () => void }) {
   // 100% = test is done for this kid, so no retry button; a miss gets "Try again" with new questions
   const total = attempt.questions.length
@@ -95,6 +227,9 @@ export default function Quiz() {
   const [idx, setIdx] = useState(0)
   const [phase, setPhase] = useState<Phase>('ask')
   const [error, setError] = useState('')
+  // nothing is graded until the kid taps Submit, so they can change their mind
+  const [picked, setPicked] = useState<string | null>(null)
+  const [slots, setSlots] = useState<Slots>([null, null])
   const busy = useRef(false)
 
   useEffect(() => {
@@ -127,6 +262,8 @@ export default function Quiz() {
       setIdx(idx + 1)
       setPhase('ask')
     }
+    setPicked(null)
+    setSlots([null, null])
     busy.current = false
   }
 
@@ -155,6 +292,9 @@ export default function Quiz() {
     }
   }
 
+  const place = attempt.type === 'place'
+  const pending = place ? (slots[0] !== null && slots[1] !== null ? `${q.choices[slots[0]]},${q.choices[slots[1]]}` : null) : picked
+
   const tapScreen = () => {
     if (phase === 'wrong') setPhase('reveal')
     else if (phase === 'right' || phase === 'reveal') next()
@@ -168,6 +308,7 @@ export default function Quiz() {
   if (phase === 'done') return <ScoreScreen attempt={attempt} onAgain={again} onHome={() => navigate('/kid')} />
 
   const choiceStyle = (c: string) => {
+    if (phase === 'ask' && c === picked) return 'bg-violet-600 text-white ring-4 ring-violet-300 shadow-[0_6px_0_#5b21b6] scale-105'
     if (phase === 'ask') return 'bg-white text-slate-800 ring-4 ring-violet-200 shadow-[0_6px_0_#c4b5fd]'
     if (c === q.given && phase === 'right') return 'bg-blue-600 text-white ring-4 ring-blue-300 scale-110'
     if (c === q.given) return 'bg-red-500 text-white ring-4 ring-red-300'
@@ -182,7 +323,9 @@ export default function Quiz() {
         ? 'Yay! Tap for next ➡️'
         : phase === 'reveal'
           ? 'Tap for next ➡️'
-          : ' '
+          : place
+            ? 'Drag two numbers into the boxes 👆'
+            : ' '
 
   return (
     <div className="flex min-h-dvh flex-col p-4" onClick={tapScreen}>
@@ -211,20 +354,33 @@ export default function Quiz() {
       </header>
 
       <main className="flex flex-1 flex-col items-center justify-center gap-10">
-        <Problem key={idx} q={q} test={test} phase={phase} type={attempt.type} />
-        <div className={`grid w-full max-w-xl gap-4 ${q.choices.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {q.choices.map((c) => (
-            <button
-              key={c}
-              aria-disabled={phase !== 'ask'}
-              onClick={() => answer(c)}
-              className={`rounded-3xl py-6 text-6xl font-extrabold transition active:translate-y-1 sm:text-7xl ${choiceStyle(c)}`}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
+        {place ? (
+          <PlaceBoard key={idx} q={q} test={test} phase={phase} slots={slots} setSlots={setSlots} />
+        ) : (
+          <>
+            <Problem key={idx} q={q} test={test} phase={phase} type={attempt.type} />
+            <div className={`grid w-full max-w-xl gap-4 ${q.choices.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {q.choices.map((c) => (
+                <button
+                  key={c}
+                  aria-disabled={phase !== 'ask'}
+                  onClick={() => phase === 'ask' && setPicked(c)}
+                  className={`rounded-3xl py-6 text-6xl font-extrabold transition active:translate-y-1 sm:text-7xl ${choiceStyle(c)}`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         <div className={`h-10 text-2xl font-bold ${phase === 'wrong' || error ? 'text-red-500' : 'text-blue-600'}`}>{error || hint}</div>
+        <div className="h-20">
+          {phase === 'ask' && pending !== null && (
+            <button className="btn-primary anim-bounce-in px-12 py-4 text-3xl" onClick={() => answer(pending)}>
+              ✅ Submit
+            </button>
+          )}
+        </div>
       </main>
     </div>
   )

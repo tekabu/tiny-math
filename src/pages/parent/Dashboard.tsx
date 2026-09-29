@@ -21,10 +21,18 @@ function AttemptDetail({ attempt }: { attempt: Attempt }) {
         const style = !answered ? 'bg-slate-100 text-slate-400' : q.correct ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-700'
         // the attempt's own kind: the test may have been edited since it was taken
         const op = attempt.type === 'compare' ? (q.given ?? '?') : SYMBOL[attempt.type]
+        const [left, right] = q.given?.split(',') ?? ['?', '?']
+        const text =
+          attempt.type === 'place'
+            ? `${left} ${q.answer} ${right}`
+            : attempt.type === 'compare'
+              ? `${q.a} ${op} ${q.b}`
+              : `${q.a} ${op} ${q.b} = ${q.given ?? '?'}`
+        const fix = attempt.type === 'place' ? `${q.a} ${q.answer} ${q.b}` : q.answer
         return (
           <div key={i} className={`rounded-xl px-3 py-1 font-bold ${style}`}>
-            {attempt.type === 'compare' ? `${q.a} ${op} ${q.b}` : `${q.a} ${op} ${q.b} = ${q.given ?? '?'}`}
-            {answered && !q.correct && <span className="ml-1 text-slate-500">(→ {q.answer})</span>}
+            {text}
+            {answered && !q.correct && <span className="ml-1 text-slate-500">(→ {fix})</span>}
             {answered && (q.correct ? ' ✔' : ' ✘')}
           </div>
         )

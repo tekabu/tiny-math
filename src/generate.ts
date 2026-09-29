@@ -24,7 +24,34 @@ function numberChoices(answer: number) {
   return shuffle([...set].map(String))
 }
 
-function build(type: TestType, a: number, b: number): Question {
+export function holds(left: number, symbol: string, right: number) {
+  return symbol === '<' ? left < right : symbol === '>' ? left > right : left === right
+}
+
+/**
+ * Grade a kid's choice: true / false, or null when it isn't a legal choice.
+ * Place answers are "left,right" made of two different tiles; any pair that fits the symbol counts.
+ */
+export function checkAnswer(type: TestType, q: Question, choice: string): boolean | null {
+  if (type !== 'place') return q.choices.includes(choice) ? choice === q.answer : null
+  const parts = choice.split(',')
+  if (parts.length !== 2) return null
+  const pool = [...q.choices]
+  for (const p of parts) {
+    const i = pool.indexOf(p)
+    if (i === -1) return null
+    pool.splice(i, 1)
+  }
+  return holds(Number(parts[0]), q.answer, Number(parts[1]))
+}
+
+function build(type: TestType, a: number, b: number, min: number, max: number): Question {
+  if (type === 'place') {
+    const answer = a < b ? '<' : a > b ? '>' : '='
+    // the fitting pair plus two extra tiles so there's something to choose
+    const choices = shuffle([a, b, rand(min, max), rand(min, max)].map(String))
+    return { a, b, answer, choices }
+  }
   if (type === 'compare') {
     const answer = a < b ? '<' : a > b ? '>' : '='
     return { a, b, answer, choices: ['<', '=', '>'] }
@@ -37,9 +64,9 @@ export function makeQuestion(type: TestType, min: number, max: number): Question
   let a = rand(min, max)
   let b = rand(min, max)
   // plain random rarely lands on equal; give it a fair share
-  if (type === 'compare' && Math.random() < 1 / 3) b = a
+  if ((type === 'compare' || type === 'place') && Math.random() < 1 / 3) b = a
   if (type === 'sub' && b > a) [a, b] = [b, a]
-  return build(type, a, b)
+  return build(type, a, b, min, max)
 }
 
 /** How many different questions a range has (subtraction keeps a ≥ b). */
@@ -66,9 +93,10 @@ export function makeQuestions(type: TestType, min: number, max: number, count: n
   return out
 }
 
-export const SYMBOL: Record<TestType, string> = { add: '+', sub: '−', compare: '?' }
+export const SYMBOL: Record<TestType, string> = { add: '+', sub: '−', compare: '?', place: '?' }
 export const TYPE_LABEL: Record<TestType, string> = {
   add: 'Addition',
   sub: 'Subtraction',
   compare: 'Less / Greater / Equal',
+  place: 'Drag numbers to < > =',
 }

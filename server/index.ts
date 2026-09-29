@@ -4,7 +4,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
-import { makeQuestions } from '../src/generate.ts'
+import { checkAnswer, makeQuestions, TYPE_LABEL } from '../src/generate.ts'
 import type { Attempt, Question, Role, Test, TestType, User } from '../src/types.ts'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -242,7 +242,7 @@ function createUser(username: unknown, displayName: unknown, pw: unknown, role: 
 }
 
 function readTestBody(body: Row) {
-  if (!['add', 'sub', 'compare'].includes(body.type as string)) throw new HttpError(400, 'Unknown test type')
+  if (!['add', 'sub', 'compare', 'place'].includes(body.type as string)) throw new HttpError(400, 'Unknown test type')
   const type = body.type as TestType
   const min = int(body.min, 'Min', 0, 1000)
   const max = int(body.max, 'Max', 0, 1000)
@@ -524,9 +524,10 @@ api.post('/attempts/:id/answer', (req, res) => {
   if (index === -1 || req.body.index !== index) throw new HttpError(409, 'Already answered')
   const q: Question = a.questions[index]
   const choice = req.body.choice
-  if (typeof choice !== 'string' || !q.choices.includes(choice)) throw new HttpError(400, 'Bad choice')
+  const correct = typeof choice === 'string' ? checkAnswer(a.type, q, choice) : null
+  if (correct === null) throw new HttpError(400, 'Bad choice')
   q.given = choice
-  q.correct = choice === q.answer
+  q.correct = correct
   const score = a.questions.filter((x) => x.correct).length
   const finishedAt = index === a.questions.length - 1 ? Date.now() : null
   db.prepare('UPDATE attempts SET questions = ?, score = ?, finished_at = ? WHERE id = ?').run(
@@ -538,9 +539,8 @@ api.post('/attempts/:id/answer', (req, res) => {
   res.json({ ...a, score, finishedAt })
 })
 
-const TYPE_NAME: Record<TestType, string> = { add: 'Addition', sub: 'Subtraction', compare: 'Less / Greater / Equal' }
 function defaultName(type: TestType, min: number, max: number) {
-  return `${TYPE_NAME[type]} ${min}–${max}`
+  return `${TYPE_LABEL[type]} ${min}–${max}`
 }
 
 app.use('/api', api)
