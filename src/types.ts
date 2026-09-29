@@ -31,7 +31,7 @@ export interface Question {
    * (for place it's the symbol shown; a and b are one pair that fits it)
    */
   answer: string
-  /** answer buttons, or for place the number tiles to drag (may repeat) */
+  /** answer buttons, or for place the two number tiles to drag */
   choices: string[]
   /** for place: "left,right" */
   given?: string

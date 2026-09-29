@@ -157,7 +157,7 @@ function PlaceBoard({ q, test, phase, slots, setSlots }: { q: Question; test: Te
       <div className="flex items-start justify-center gap-3 text-7xl font-extrabold sm:gap-5 sm:text-8xl">
         {box(0)} <span className="text-violet-600">{q.answer}</span> {box(1)}
       </div>
-      <div className="grid w-full max-w-xl grid-cols-4 gap-4">
+      <div className="grid w-full max-w-md grid-cols-2 gap-4">
         {q.choices.map((c, i) => (
           <button
             key={i}

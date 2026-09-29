@@ -45,12 +45,11 @@ export function checkAnswer(type: TestType, q: Question, choice: string): boolea
   return holds(Number(parts[0]), q.answer, Number(parts[1]))
 }
 
-function build(type: TestType, a: number, b: number, min: number, max: number): Question {
+function build(type: TestType, a: number, b: number): Question {
   if (type === 'place') {
     const answer = a < b ? '<' : a > b ? '>' : '='
-    // the fitting pair plus two extra tiles so there's something to choose
-    const choices = shuffle([a, b, rand(min, max), rand(min, max)].map(String))
-    return { a, b, answer, choices }
+    // just the two numbers: the kid works out which side each goes
+    return { a, b, answer, choices: shuffle([a, b].map(String)) }
   }
   if (type === 'compare') {
     const answer = a < b ? '<' : a > b ? '>' : '='
@@ -66,7 +65,7 @@ export function makeQuestion(type: TestType, min: number, max: number): Question
   // plain random rarely lands on equal; give it a fair share
   if ((type === 'compare' || type === 'place') && Math.random() < 1 / 3) b = a
   if (type === 'sub' && b > a) [a, b] = [b, a]
-  return build(type, a, b, min, max)
+  return build(type, a, b)
 }
 
 /** How many different questions a range has (subtraction keeps a ≥ b). */
